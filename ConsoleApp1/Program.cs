@@ -17,20 +17,15 @@ internal static class Program
             Console.WriteLine($"Definitions version: {definitions.SignatureVersion}");
             Console.WriteLine($"Last updated: {definitions.SignatureLastUpdated}");
 
-            if (args.Length > 0)
+
+            var result = await ScanFileAsync(@"d:\1.mkv");
+            Console.WriteLine($"Scan started: {result.ScanStarted}");
+            Console.WriteLine($"Threat detections: {result.Detections.Length}");
+            foreach (var detection in result.Detections)
             {
-                var result = await ScanFolderAsync(args[0]);
-                Console.WriteLine($"Scan started: {result.ScanStarted}");
-                Console.WriteLine($"Threat detections: {result.Detections.Length}");
-                foreach (var detection in result.Detections)
-                {
-                    Console.WriteLine($"{detection.ThreatName} (ID {detection.ThreatID})");
-                }
+                Console.WriteLine($"{detection.ThreatName} (ID {detection.ThreatID})");
             }
-            else
-            {
-                Console.WriteLine("Pass a folder path as an argument to scan it.");
-            }
+
         }
         catch (Exception exception)
         {
@@ -47,14 +42,14 @@ internal static class Program
             ?? throw new InvalidOperationException("Windows Defender returned no definition status.");
     }
 
-    public static async Task<DefenderScanResult> ScanFolderAsync(string folderPath)
+    public static async Task<DefenderScanResult> ScanFileAsync(string filePath)
     {
-        if (string.IsNullOrWhiteSpace(folderPath) || !Directory.Exists(folderPath))
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
         {
-            throw new DirectoryNotFoundException($"Folder not found: {folderPath}");
+            throw new FileNotFoundException($"File not found: {filePath}");
         }
 
-        var escapedPath = folderPath.Replace("'", "''");
+        var escapedPath = filePath.Replace("'", "''");
         var script = $"$ErrorActionPreference = 'Stop'; try {{ $scanStarted = Get-Date; Start-MpScan -ScanType CustomScan -ScanPath '{escapedPath}'; $detections = @(Get-MpThreatDetection | Where-Object {{ $_.InitialDetectionTime -ge $scanStarted }} | Select-Object ThreatID, ThreatName, InitialDetectionTime, ActionSuccess, Resources); [pscustomobject]@{{ ScanStarted = $scanStarted.ToString('o'); Detections = $detections }} | ConvertTo-Json -Compress -Depth 5 }} catch {{ [Console]::Error.WriteLine($_); exit 1 }}";
         var json = await RunPowerShellAsync(script);
         return JsonSerializer.Deserialize<DefenderScanResult>(json, JsonOptions)
